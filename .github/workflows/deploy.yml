@@ -41,16 +41,14 @@ jobs:
           host: ${{ secrets.DROPLET_IP }}
           username: ${{ secrets.DROPLET_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "dist/insightlytics-dashboard/*"
+          source: "dist/insightlytics-dashboard/browser/*"
           target: ${{ secrets.DEPLOY_PATH }}
-          strip_components: 2
+          strip_components: 3
           timeout: "120s"
           command_timeout: "30m"
           debug: true
           proxy_timeout: "30s"
-          retries: 3
-          use_insecure_cipher: false  # Ensure secure ciphers
-          delay: 10000  # Add delay between retries (10 seconds)
+          use_insecure_cipher: false
 
       - name: Verify Deployment
         run: |
