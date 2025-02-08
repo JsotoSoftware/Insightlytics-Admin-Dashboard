@@ -1,0 +1,42 @@
+name: Deploy to DigitalOcean
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+      - name: Build and Push Docker Image
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+        run: |
+          docker build -t $DOCKER_USERNAME/insightlytics-dashboard:latest .
+          docker build -t $DOCKER_USERNAME/insightlytics-dashboard:${{ github.sha }} .
+          docker push $DOCKER_USERNAME/insightlytics-dashboard:latest
+          docker push $DOCKER_USERNAME/insightlytics-dashboard:${{ github.sha }}
+
+      - name: SSH into DigitalOcean and Deploy
+        uses: appleboy/ssh-action@v0.1.4
+        with:
+          host: ${{ secrets.DROPLET_IP }}
+          username: ${{ secrets.DROPLET_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            export DOCKER_USERNAME=${{ secrets.DOCKER_USERNAME }}
+            docker pull $DOCKER_USERNAME/insightlytics-dashboard:latest
+            docker stop insightlytics-dashboard || true
+            docker rm insightlytics-dashboard || true
+            docker run -d \
+              --name insightlytics-dashboard \
+              --restart unless-stopped \
+              -p 80:80 \
+              $DOCKER_USERNAME/insightlytics-dashboard:latest
