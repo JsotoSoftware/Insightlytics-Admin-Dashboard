@@ -40,3 +40,20 @@ testem.log
 # System files
 .DS_Store
 Thumbs.db
+
+# Cypress
+/cypress/videos
+/cypress/screenshots
+/cypress/downloads
+/cypress/results
+/cypress/reports
+.cypress-cache
+
+# Karma & Jasmine
+/karma-results
+/karma-coverage
+/.karma
+/junit
+/test-results
+*.log
+karma-*

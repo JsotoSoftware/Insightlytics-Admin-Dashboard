@@ -4,9 +4,33 @@ on:
   push:
     branches:
       - main
+      - staging
 
 jobs:
+  test:
+    name: Run Unit & E2E Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Unit Tests
+        run: npm run test --watch=false --browsers=ChromeHeadless
+
+      - name: Run E2E Tests
+        run: npm run e2e
+
   deploy:
+    name: Deploy to DigitalOcean
+    needs: test  # ✅ Deployment runs only if tests pass
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -22,6 +46,18 @@ jobs:
 
       - name: Build
         run: npm run build --configuration=production
+
+      - name: Determine Deployment Path
+        run: |
+          if [ "${{ github.ref }}" == "refs/heads/staging" ]; then
+            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH_STAGING }}" >> $GITHUB_ENV
+            echo "DEPLOY_URL=${{ secrets.DEPLOY_URL_STAGING }}" >> $GITHUB_ENV
+            echo "ENVIRONMENT=staging" >> $GITHUB_ENV
+          else
+            echo "DEPLOY_PATH=${{ secrets.DEPLOY_PATH }}" >> $GITHUB_ENV
+            echo "DEPLOY_URL=${{ secrets.DEPLOY_URL }}" >> $GITHUB_ENV
+            echo "ENVIRONMENT=production" >> $GITHUB_ENV
+          fi
 
       - name: Setup SSH
         run: |
@@ -42,7 +78,7 @@ jobs:
           username: ${{ secrets.DROPLET_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           source: "dist/insightlytics-dashboard/browser/*"
-          target: ${{ secrets.DEPLOY_PATH }}
+          target: ${{ env.DEPLOY_PATH }}
           strip_components: 3
           timeout: "120s"
           command_timeout: "30m"
@@ -50,17 +86,25 @@ jobs:
           proxy_timeout: "30s"
           use_insecure_cipher: false
 
+      - name: Restart Caddy Server
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_IP }} << 'EOF'
+            sudo systemctl reload caddy
+            echo "✅ Caddy server restarted!"
+          EOF
+
       - name: Verify Deployment
         run: |
           echo "Waiting for deployment to stabilize..."
-          sleep 15  # Give Caddy time to pick up new files
+          echo "Verifying ${{ env.ENVIRONMENT }} deployment..."
+          sleep 15
           for i in {1..3}; do
-            if curl --fail --silent --head ${{ secrets.DEPLOY_URL }}; then
-              echo "Deployment verified successfully!"
+            if curl --fail --silent --head ${{ env.DEPLOY_URL }}; then
+              echo "✅ ${{ env.ENVIRONMENT }} deployment verified successfully!"
               exit 0
             fi
             echo "Attempt $i failed, retrying..."
             sleep 10
           done
-          echo "Deployment verification failed"
+          echo "❌ ${{ env.ENVIRONMENT }} deployment verification failed"
           exit 1
